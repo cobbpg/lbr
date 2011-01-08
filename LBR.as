@@ -234,7 +234,7 @@ internal class Player extends Sprite {
   public static const refillRate:Number = 1;
   public static const size:Number = 10;
 
-  public var energy:Number = 0;
+  public var energy:Number = 1;
 
   public var vx:Number = 0;
   public var vy:Number = 0;
@@ -261,7 +261,9 @@ internal class Player extends Sprite {
   public function update(dt:Number):void {
     rotation += ((turnRight ? 1 : 0) - (turnLeft ? 1 : 0)) * turnSpeed * dt;
 
-    if (throttle) {
+    var reloading:Boolean = vecLen(x - stage.stageWidth / 2, y - stage.stageHeight / 2) < starSize;
+
+    if (throttle || reloading) {
       vx += Math.sin(rotation * Math.PI / 180) * acceleration * dt;
       vy -= Math.cos(rotation * Math.PI / 180) * acceleration * dt;
     }
@@ -277,12 +279,7 @@ internal class Player extends Sprite {
     x += vx * dt;
     y += vy * dt;
 
-    energy = Math.max(0, energy - depletionRate * dt);
-
-    if (vecLen(x - stage.stageWidth / 2, y - stage.stageHeight / 2) < starSize) {
-      energy = Math.min(1, energy + refillRate * dt);
-    }
-
+    energy = reloading ? Math.min(1, energy + refillRate * dt) : Math.max(0, energy - depletionRate * dt);
     transform.colorTransform = new ColorTransform(energy, 0.3 + energy * 0.7, 0.6 + energy * 0.4);
   }
 
