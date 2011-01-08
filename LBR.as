@@ -9,20 +9,17 @@ package {
 
     public const tstep:Number = 0.02;
     public var tprev:Number = getTimer();
+    public var paused:Boolean = false;
 
-    public var asteroids:Array = new Array();
-    public var player:Player = new Player();
+    public var asteroids:Array;
+    public var player:Player;
 
     public function LBR():void {
-      addChild(player);
-      player.init();
-
-      for (var i:int = 0; i < 3; i++) {
-	addAsteroid();
-      }
+      initGame();
 
       var m:Matrix = new Matrix();
-      m.createGradientBox(starSize, starSize, 0, (stage.stageWidth - starSize) / 2, (stage.stageHeight - starSize) / 2);
+      var ss:Number = starSize * 2;
+      m.createGradientBox(ss, ss, 0, (stage.stageWidth - ss) / 2, (stage.stageHeight - ss) / 2);
       graphics.beginGradientFill(GradientType.RADIAL, [0xffcc00, 0xff0000, 0x000000], [1, 1, 1], [0, 240, 255], m);
       graphics.drawRect(0, 0, stage.stageWidth, stage.stageHeight);
       graphics.endFill();
@@ -33,7 +30,22 @@ package {
       stage.addEventListener(KeyboardEvent.KEY_UP, onKeyUp);
     }
 
+    public function initGame():void {
+      while (numChildren > 0) {
+	removeChildAt(0);
+      }
+
+      player = new Player();
+      addChild(player);
+      player.init();
+
+      asteroids = new Array();
+      addAsteroid();
+    }
+
     public function onEnterFrame(e:Event):void {
+      if (paused) return;
+
       var tcur:int = getTimer();
       var dt:Number = (tcur - tprev) * 0.001;
       tprev = tcur;
@@ -43,20 +55,27 @@ package {
       var changed:Boolean = false;
       var added:Array = new Array();
       for each (var a:Asteroid in asteroids) {
-	a.update(dt);
+	a.update(dt, player.energy);
 
 	var dx:Number = player.x - a.x;
 	var dy:Number = player.y - a.y;
 	var d:Number = vecLen(dx, dy);
 
 	if (d < a.size * Asteroid.unit + Player.size) {
+	  if (a.lethal) {
+	    initGame();
+	    return;
+	  }
+
 	  changed = true;
+
+	  var v:Number = -2 * (player.vx * dx + player.vy * dy) / (d * d * Asteroid.startSize) * a.size
+	  player.vx += dx * v;
+	  player.vy += dy * v;
 
 	  if (a.size == Asteroid.startSize) {
 	    added.push({size:-1, x:-1, y:-1});
 	    added.push({size:-1, x:-1, y:-1});
-	    //addAsteroid();
-	    //addAsteroid();
 	  }
 
 	  if (a.size > 0) {
@@ -68,8 +87,6 @@ package {
 	    a.redraw();
 	    added.push({size:a.size, x:a.x, y:a.y});
 	    added.push({size:a.size, x:a.x, y:a.y});
-	    //addAsteroid(a.size, a.x, a.y);
-	    //addAsteroid(a.size, a.x, a.y);
 	  } else {
 	    removeChild(a);
 	  }
@@ -78,7 +95,10 @@ package {
       }
 
       if (changed) {
-	asteroids = asteroids.filter(function(e:Asteroid, i:int, a:Array):Boolean { return e.size > 0; });
+	asteroids = asteroids.filter
+	  (function(e:Asteroid, i:int, a:Array):Boolean {
+	    return e.size > 0;
+	  });
 	for each (var na:* in added) {
 	  addAsteroid(na.size, na.x, na.y);
 	}
@@ -99,6 +119,11 @@ package {
 
     public function onKeyDown(e:KeyboardEvent):void {
       handleKeyEvent(e.keyCode, true);
+      if (e.keyCode == 80) { // P
+	paused = !paused;
+	transform.colorTransform = paused ? new ColorTransform(0.5, 0.5, 0.5) : new ColorTransform();
+	tprev = getTimer();
+      }
     }
 
     public function onKeyUp(e:KeyboardEvent):void {
@@ -128,9 +153,10 @@ package {
 
 import flash.display.*;
 import flash.events.*;
+import flash.geom.*;
 import flash.utils.*;
 
-const starSize:Number = 80;
+const starSize:Number = 40;
 
 internal class Asteroid extends Sprite {
 
@@ -140,6 +166,7 @@ internal class Asteroid extends Sprite {
   public var size:int;
   public var vx:Number;
   public var vy:Number;
+  public var lethal:Boolean = false;
 
   public function Asteroid(s:int) {
     size = s;
@@ -162,7 +189,7 @@ internal class Asteroid extends Sprite {
     }
   }
 
-  public function update(dt:Number):void {
+  public function update(dt:Number, pnrg:Number):void {
     if (borderHit(x, vx, size * unit, stage.stageWidth)) {
       vx *= -1;
     }
@@ -174,18 +201,25 @@ internal class Asteroid extends Sprite {
     var dx:Number = x - stage.stageWidth / 2;
     var dy:Number = y - stage.stageHeight / 2;
     var d:Number = vecLen(dx, dy);
-    if (d < starSize * 1.5) {
+    if (d < starSize * 3) {
       vx += dx / d * dt * 30;
       vy += dy / d * dt * 30;
     }
 
     x += vx * dt;
     y += vy * dt;
+
+    var l:Boolean = pnrg * startSize * 2 < size;
+    if (l != lethal) {
+      lethal = l;
+      transform.colorTransform = lethal ? new ColorTransform(1, 0, 0) : new ColorTransform();
+    }
   }
 
   public function redraw():void {
     graphics.clear();
     graphics.beginFill(0x999999);
+    graphics.lineStyle(1, 0x555555);
     graphics.drawCircle(0, 0, size * unit);
     graphics.endFill();
   }
@@ -196,9 +230,11 @@ internal class Player extends Sprite {
 
   public static const acceleration:Number = 50;
   public static const turnSpeed:Number = 200;
+  public static const depletionRate:Number = 0.2;
+  public static const refillRate:Number = 1;
   public static const size:Number = 10;
 
-  public var energy:Number;
+  public var energy:Number = 0;
 
   public var vx:Number = 0;
   public var vy:Number = 0;
@@ -208,10 +244,12 @@ internal class Player extends Sprite {
   public var turnRight:Boolean = false;
 
   public function Player():void {
+    const c30:Number = Math.cos(Math.PI / 6);
     graphics.beginFill(0xffffff);
-    graphics.moveTo(-10, 5);
-    graphics.lineTo(10, 5);
-    graphics.lineTo(0, -15);
+    graphics.moveTo(-size * c30, size * 0.5);
+    graphics.lineTo(size * c30, size * 0.5);
+    graphics.lineTo(0, -size);
+    graphics.drawRect(-size * 0.5, size * 0.6, size, size * 0.3);
     graphics.endFill();
   }
 
@@ -238,6 +276,14 @@ internal class Player extends Sprite {
 
     x += vx * dt;
     y += vy * dt;
+
+    energy = Math.max(0, energy - depletionRate * dt);
+
+    if (vecLen(x - stage.stageWidth / 2, y - stage.stageHeight / 2) < starSize) {
+      energy = Math.min(1, energy + refillRate * dt);
+    }
+
+    transform.colorTransform = new ColorTransform(energy, 0.3 + energy * 0.7, 0.6 + energy * 0.4);
   }
 
 }
@@ -249,4 +295,3 @@ function borderHit(p:Number, v:Number, s:Number, l:Number):Boolean {
 function vecLen(vx:Number, vy:Number):Number {
   return Math.sqrt(vx * vx + vy * vy);
 }
-
