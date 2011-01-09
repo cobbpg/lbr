@@ -304,7 +304,7 @@ internal class Game extends Sprite {
       if (player.visible && (d < a.size * Asteroid.unit + Player.size)) {
 	if (a.lethal) {
 	  endGame(score);
-	  var pexp:Explosion = new Explosion(a.x, a.y, 2 * Asteroid.unit);
+	  var pexp:Explosion = new Explosion(a.x, a.y, 5 * Asteroid.unit);
 	  explosions.push(pexp);
 	  addChild(pexp);
 	  player.visible = false;
@@ -322,7 +322,7 @@ internal class Game extends Sprite {
 	} else {
 	  score += a.size * a.size * 100;
 	  scoreField.text = score + " ";
-	  var exp:Explosion = new Explosion(a.x, a.y, 0.3 * a.size * Asteroid.unit);
+	  var exp:Explosion = new Explosion(a.x, a.y, a.size * Asteroid.unit);
 	  explosions.push(exp);
 	  addChild(exp);
 	}
@@ -587,10 +587,10 @@ internal class Player extends Sprite {
 
 internal class Explosion extends Sprite {
 
-  public static const numPieces:int = 20;
-  public static const maxSize:Number = 2;
+  public static const numPieces:int = 50;
   public static const rate:Number = 1.5;
   public var alive:Boolean = true;
+  public var flare:Sunflare = new Sunflare();
 
   public function Explosion(px:Number, py:Number, ps:Number):void {
     x = px;
@@ -598,10 +598,14 @@ internal class Explosion extends Sprite {
     scaleX = ps;
     scaleY = ps;
 
+    flare.scaleX = 0.7 / starSize;
+    flare.scaleY = flare.scaleX;
+    addChild(flare);
+
     for (var i:int = 0; i < numPieces; i++) {
       var p:Shape = new Shape();
       p.graphics.beginFill(0xffffff);
-      p.graphics.drawEllipse(1, -0.5, 3, 1);
+      p.graphics.drawEllipse(1, -0.05, 0.3, 0.1);
       p.graphics.endFill();
       p.rotation = Math.random() * 360;
       p.scaleX = Math.random() * 0.1 + 0.05;
@@ -614,9 +618,11 @@ internal class Explosion extends Sprite {
   public function update(dt:Number):void {
     var vis:Boolean = false;
 
-    for (var i:int = 0; i < numChildren; i++) {
+    flare.update(dt);
+    flare.alpha -= 0.8 * rate * dt;
+    for (var i:int = 1; i < numChildren; i++) {
       var p:Shape = getChildAt(i) as Shape;
-      p.scaleX = rate * dt * maxSize + (1 - rate * dt) * p.scaleX;
+      p.scaleX += (p.alpha * 2) * dt;
       p.scaleY = p.scaleX;
       p.alpha -= rate * dt;
       vis ||= p.alpha > 0.03;
@@ -633,16 +639,20 @@ internal class Sunflare extends Sprite {
   public static const bsize:int = 256;
   public static const maxScale:Number = starSize * 4 / bsize;
 
+  public static var bmd:BitmapData = null;
+
   public function Sunflare():void {
-    var bmd:BitmapData = new BitmapData(bsize, bsize);
-    bmd.perlinNoise(16, 16, 2, 1, false, true, BitmapDataChannel.ALPHA, true);
-    bmd.colorTransform(new Rectangle(0, 0, bsize, bsize),
-		       new ColorTransform(1, 1, 1, 2.5, 0, 0, 0, -255));
-    for (var i:int = 0; i < bsize; i++) {
-      for (var j:int = 0; j < bsize; j++) {
-	var a:uint = (bmd.getPixel32(i, j) >> 24) & 0xff;
-	var d:uint = Math.max(0, 255 - vecLen(i - bsize / 2, j - bsize / 2) * 512 / bsize);
-	bmd.setPixel32(i, j, (((a * d) >> 8) << 24) | 0xffffff);
+    if (!bmd) {
+      bmd = new BitmapData(bsize, bsize);
+      bmd.perlinNoise(16, 16, 2, 1, false, true, BitmapDataChannel.ALPHA, true);
+      bmd.colorTransform(new Rectangle(0, 0, bsize, bsize),
+			 new ColorTransform(1, 1, 1, 2.5, 0, 0, 0, -255));
+      for (var i:int = 0; i < bsize; i++) {
+	for (var j:int = 0; j < bsize; j++) {
+	  var a:uint = (bmd.getPixel32(i, j) >> 24) & 0xff;
+	  var d:uint = Math.max(0, 255 - vecLen(i - bsize / 2, j - bsize / 2) * 512 / bsize);
+	  bmd.setPixel32(i, j, (((a * d) >> 8) << 24) | 0xffffff);
+	}
       }
     }
 
