@@ -3,18 +3,25 @@ package {
   import flash.display.*;
   import flash.events.*;
   import flash.geom.*;
+  import flash.net.*;
   import flash.utils.*;
 
   public class LBR extends Sprite {
 
     [Embed(source="/usr/share/fonts/truetype/ttf-larabie-straight/zekton__.ttf", fontName="Zekton",
-	   embedAsCFF="false", unicodeRange="U+0030-U+0039,U+0041-U+005A,U+0061-U+007A")]
+	   embedAsCFF="false", unicodeRange="U+0030-U+003A,U+0041-U+005A,U+0061-U+007A")]
     public static const FONT_ZEKTON:Class;
 
     public var game:Game = null;
     public var menu:Menu = null;
+    public var highScore:SharedObject = SharedObject.getLocal("lbp/highscore");
 
     public function LBR():void {
+      if (!highScore.data.score) {
+	highScore.data.score = 0;
+	highScore.flush();
+      }
+
       initMenu();
 
       stage.frameRate = 1 / tstep;
@@ -34,16 +41,31 @@ package {
 
     public function initMenu():void {
       cleanup();
-      menu = new Menu([{text:"Play", action:initGame}, {text:"Help", action:null}]);
+      menu = new Menu(highScore.data.score, [
+	{text:"Play", action:initGame},
+	{text:"Help", action:null},
+	{text:"Clear high score", action:clearScore}]);
       addChild(menu);
       menu.init();
     }
 
     public function initGame():void {
       cleanup();
-      game = new Game(initMenu);
+      game = new Game(endGame);
       addChild(game);
       game.init();
+    }
+
+    public function endGame(score:int):void {
+      highScore.data.score = Math.max(highScore.data.score, score);
+      highScore.flush();
+      initMenu();
+    }
+
+    public function clearScore():void {
+      highScore.data.score = 0;
+      highScore.flush();
+      initMenu();
     }
 
     public function onEnterFrame(e:Event):void {
@@ -80,10 +102,12 @@ internal class Menu extends Sprite {
   public static const activeCol:int = 0xff0000;
 
   public var items:Array;
+  public var score:int;
   public var active:int = 1;
 
-  public function Menu(menuItems:Array):void {
+  public function Menu(highScore:int, menuItems:Array):void {
     items = menuItems;
+    score = highScore;
   }
 
   public function init():void {
@@ -95,6 +119,7 @@ internal class Menu extends Sprite {
     for (var i:int = 0; i < items.length; i++) {
       addText(items[i].text, 150 + i * 35, 25);
     }
+    addText("High score: " + score, stage.stageHeight - 95, 25);
 
     var tf:TextField = getChildAt(active) as TextField;
     tf.textColor = activeCol;
@@ -121,13 +146,13 @@ internal class Menu extends Sprite {
     case 87: // W
       active--;
       if (active < 1) {
-	active = numChildren - 1;
+	active = items.length;
       }
       break;
     case 40: // down
     case 83: // S
       active++;
-      if (active >= numChildren) {
+      if (active > items.length) {
 	active = 1;
       }
       break;
@@ -228,7 +253,7 @@ internal class Game extends Sprite {
 
       if (d < a.size * Asteroid.unit + Player.size) {
 	if (a.lethal) {
-	  endGame();
+	  endGame(score);
 	  return;
 	} else {
 	  score += a.size * a.size * 100;
@@ -293,7 +318,7 @@ internal class Game extends Sprite {
       tprev = getTimer();
     }
     if (e.keyCode == 27) { // escape
-      endGame();
+      endGame(score);
     }
   }
 
