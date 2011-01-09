@@ -4,16 +4,18 @@ package {
   import flash.events.*;
   import flash.geom.*;
   import flash.net.*;
+  import flash.text.*;
   import flash.utils.*;
 
   public class LBR extends Sprite {
 
     [Embed(source="/usr/share/fonts/truetype/ttf-larabie-straight/zekton__.ttf", fontName="Zekton",
-	   embedAsCFF="false", unicodeRange="U+0030-U+003A,U+0041-U+005A,U+0061-U+007A")]
+	   embedAsCFF="false", unicodeRange="U+0021,U+0028,U+0029,U+002C-U+003A,U+0041-U+005A,U+0061-U+007A")]
     public static const FONT_ZEKTON:Class;
 
     public var game:Game = null;
     public var menu:Menu = null;
+    public var dead:Boolean = false;
     public var highScore:SharedObject = SharedObject.getLocal("lbp/highscore");
 
     public function LBR():void {
@@ -35,15 +37,17 @@ package {
 	removeChildAt(0);
       }
 
+      graphics.clear();
       game = null;
       menu = null;
+      dead = false;
     }
 
     public function initMenu():void {
       cleanup();
       menu = new Menu(highScore.data.score, [
 	{text:"Play", action:initGame},
-	{text:"Help", action:null},
+	{text:"Help", action:showHelp},
 	{text:"Clear high score", action:clearScore}]);
       addChild(menu);
       menu.init();
@@ -59,7 +63,37 @@ package {
     public function endGame(score:int):void {
       highScore.data.score = Math.max(highScore.data.score, score);
       highScore.flush();
-      initMenu();
+      dead = true;
+      //initMenu();
+    }
+
+    public function showHelp():void {
+      cleanup();
+
+      graphics.beginFill(0x000000);
+      graphics.drawRect(0, 0, stage.stageWidth, stage.stageHeight);
+      graphics.endFill();
+
+      var tf:TextField = new TextField();
+      tf.embedFonts = true;
+      tf.width = stage.stageWidth - 20;
+      tf.height = stage.stageHeight - 20;
+      tf.autoSize = TextFieldAutoSize.LEFT;
+      tf.multiline = true;
+      tf.wordWrap = true;
+      tf.defaultTextFormat = new TextFormat("Zekton", 20, 0xffffff);
+      tf.htmlText = '<p><font size="35">LOVE Breaks Rocks</font></p><p>\n'
+	+ 'Break the asteroids for points by ramming them. '
+	+ 'Keep in mind that you need to be sufficiently charged with LOVE '
+	+ '(Low-Orbit Vital Energy) to survive the impact! '
+	+ 'You can fill up your energy by touching the star and monitor it in the upper left corner. '
+	+ 'If an asteroid is too big for you at the moment, it will have a menacing red glow. '
+	+ 'You can move your ship with arrows or W/A/D and pause with P. '
+	+ 'Esc gets you back to the menu at any time. Good luck!'
+      tf.x = 10;
+      tf.y = 10;
+
+      addChild(tf);
     }
 
     public function clearScore():void {
@@ -73,12 +107,16 @@ package {
     }
 
     public function onKeyDown(e:KeyboardEvent):void {
-      if (game) game.onKeyDown(e);
-      if (menu) menu.onKeyDown(e);
+      if (e.keyCode == 27) {
+	initMenu();
+      } else {
+	if (game && !dead) game.onKeyDown(e);
+	if (menu) menu.onKeyDown(e);
+      }
     }
 
     public function onKeyUp(e:KeyboardEvent):void {
-      if (game) game.onKeyUp(e);
+      if (game && !dead) game.onKeyUp(e);
     }
 
   }
@@ -174,6 +212,7 @@ internal class Game extends Sprite {
   public var tprev:Number = getTimer();
   public var paused:Boolean = false;
   public var asteroids:Array = new Array();
+  public var explosions:Array = new Array();
   public var player:Player = new Player();
   public var scoreField:TextField = new TextField();
   public var score:int = 0;
@@ -238,9 +277,20 @@ internal class Game extends Sprite {
     var dt:Number = (tcur - tprev) * 0.001;
     tprev = tcur;
 
-    player.update(dt);
-    loveMeter.scaleX = player.energy;
+    if (player.visible) {
+      player.update(dt);
+      loveMeter.scaleX = player.energy;
+    }
     star.update(dt);
+
+    explosions = explosions.filter
+      (function(e:Explosion, i:int, a:Array):Boolean {
+	e.update(dt);
+	if (!e.alive) {
+	  removeChild(e);
+	}
+	return e.alive;
+      });
 
     var changed:Boolean = false;
     var added:Array = new Array();
@@ -251,13 +301,30 @@ internal class Game extends Sprite {
       var dy:Number = player.y - a.y;
       var d:Number = vecLen(dx, dy);
 
-      if (d < a.size * Asteroid.unit + Player.size) {
+      if (player.visible && (d < a.size * Asteroid.unit + Player.size)) {
 	if (a.lethal) {
 	  endGame(score);
+	  var pexp:Explosion = new Explosion(a.x, a.y, 2 * Asteroid.unit);
+	  explosions.push(pexp);
+	  addChild(pexp);
+	  player.visible = false;
+
+	  var endmsg:TextField = new TextField();
+	  endmsg.embedFonts = true;
+	  endmsg.width = stage.stageWidth;
+	  endmsg.autoSize = TextFieldAutoSize.CENTER;
+	  endmsg.defaultTextFormat = new TextFormat("Zekton", 40, 0xffffff);
+	  endmsg.text = "GAME OVER";
+	  endmsg.y = 70;
+	  addChild(endmsg);
+
 	  return;
 	} else {
 	  score += a.size * a.size * 100;
 	  scoreField.text = score + " ";
+	  var exp:Explosion = new Explosion(a.x, a.y, 0.3 * a.size * Asteroid.unit);
+	  explosions.push(exp);
+	  addChild(exp);
 	}
 
 	changed = true;
@@ -316,9 +383,6 @@ internal class Game extends Sprite {
       paused = !paused;
       transform.colorTransform = paused ? new ColorTransform(0.5, 0.5, 0.5) : new ColorTransform();
       tprev = getTimer();
-    }
-    if (e.keyCode == 27) { // escape
-      endGame(score);
     }
   }
 
@@ -437,7 +501,7 @@ internal class Asteroid extends Sprite {
 
 internal class Player extends Sprite {
 
-  public static const acceleration:Number = 50;
+  public static const acceleration:Number = 100;
   public static const turnSpeed:Number = 200;
   public static const depletionRate:Number = 0.2;
   public static const refillRate:Number = 1;
@@ -447,27 +511,41 @@ internal class Player extends Sprite {
 
   public var vx:Number = 0;
   public var vy:Number = 0;
+  public var time:Number = 0;
 
   public var throttle:Boolean = false;
   public var turnLeft:Boolean = false;
   public var turnRight:Boolean = false;
 
+  public var fire:Shape = new Shape();
+
   public function Player():void {
-    graphics.lineStyle(1, 0x332211);
+    scaleX = size;
+    scaleY = size;
+
+    graphics.lineStyle(1 / size, 0x332211);
     graphics.beginFill(0xcc9933);
-    graphics.drawEllipse(-size, -size, size * 2, size * 1.5);
+    graphics.drawEllipse(-1, -1, 2, 1.5);
     graphics.endFill();
     graphics.beginFill(0xcc9933);
-    graphics.drawRoundRect(-size * 0.7, size * 0.1, size * 0.4, size * 0.8, size * 0.1);
-    graphics.drawRoundRect(size * 0.3, size * 0.1, size * 0.4, size * 0.8, size * 0.1);
+    graphics.drawRoundRect(-0.7, 0.1, 0.4, 0.8, 0.1);
+    graphics.drawRoundRect(0.3, 0.1, 0.4, 0.8, 0.1);
     graphics.endFill();
     graphics.beginFill(0x3399cc);
-    graphics.moveTo(-size * 0.8, -size * 0.2);
-    graphics.lineTo(-size * 0.8, -size * 0.5);
-    graphics.curveTo(0, -size * 1, size * 0.8, -size * 0.5);
-    graphics.lineTo(size * 0.8, -size * 0.2);
-    graphics.curveTo(0, -size * 0.4, -size * 0.8, -size * 0.2);
+    graphics.moveTo(-0.8, -0.2);
+    graphics.lineTo(-0.8, -0.5);
+    graphics.curveTo(0, -1, 0.8, -0.5);
+    graphics.lineTo(0.8, -0.2);
+    graphics.curveTo(0, -0.4, -0.8, -0.2);
     graphics.endFill();
+
+    fire.graphics.beginFill(0xffff00, 0.7);
+    fire.graphics.drawEllipse(-0.7, 0, 0.4, 0.8);
+    fire.graphics.drawEllipse(0.3, 0, 0.4, 0.8);
+    fire.graphics.endFill();
+    fire.visible = false;
+    fire.y = 0.9;
+    addChild(fire);
   }
 
   public function init():void {
@@ -477,6 +555,7 @@ internal class Player extends Sprite {
 
   public function update(dt:Number):void {
     rotation += ((turnRight ? 1 : 0) - (turnLeft ? 1 : 0)) * turnSpeed * dt;
+    time += dt;
 
     var reloading:Boolean = vecLen(x - stage.stageWidth / 2, y - stage.stageHeight / 2) < starSize;
     filters = reloading ? [new GlowFilter(0xffffff, 1, size, size)] : undefined;
@@ -485,6 +564,9 @@ internal class Player extends Sprite {
       vx += Math.sin(rotation * Math.PI / 180) * acceleration * dt;
       vy -= Math.cos(rotation * Math.PI / 180) * acceleration * dt;
     }
+
+    fire.visible = throttle;
+    fire.scaleY = 1 + 0.3 * Math.sin(time * 20);
 
     if (borderHit(x, vx, size, stage.stageWidth)) {
       vx *= -1;
@@ -499,6 +581,48 @@ internal class Player extends Sprite {
 
     energy = reloading ? Math.min(1, energy + refillRate * dt) : Math.max(0, energy - depletionRate * dt);
     transform.colorTransform = new ColorTransform(energy, 0.3 + energy * 0.7, 0.6 + energy * 0.4);
+  }
+
+}
+
+internal class Explosion extends Sprite {
+
+  public static const numPieces:int = 20;
+  public static const maxSize:Number = 2;
+  public static const rate:Number = 1.5;
+  public var alive:Boolean = true;
+
+  public function Explosion(px:Number, py:Number, ps:Number):void {
+    x = px;
+    y = py;
+    scaleX = ps;
+    scaleY = ps;
+
+    for (var i:int = 0; i < numPieces; i++) {
+      var p:Shape = new Shape();
+      p.graphics.beginFill(0xffffff);
+      p.graphics.drawEllipse(1, -0.5, 3, 1);
+      p.graphics.endFill();
+      p.rotation = Math.random() * 360;
+      p.scaleX = Math.random() * 0.1 + 0.05;
+      p.scaleY = p.scaleX;
+      p.alpha = Math.random() * 0.3 + 0.7;
+      addChild(p);
+    }
+  }
+
+  public function update(dt:Number):void {
+    var vis:Boolean = false;
+
+    for (var i:int = 0; i < numChildren; i++) {
+      var p:Shape = getChildAt(i) as Shape;
+      p.scaleX = rate * dt * maxSize + (1 - rate * dt) * p.scaleX;
+      p.scaleY = p.scaleX;
+      p.alpha -= rate * dt;
+      vis ||= p.alpha > 0.03;
+    }
+
+    alive &&= vis;
   }
 
 }
