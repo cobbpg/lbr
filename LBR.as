@@ -69,6 +69,7 @@ import flash.filters.*;
 import flash.geom.*;
 import flash.text.*;
 import flash.utils.*;
+import mx.core.*;
 
 const tstep:Number = 0.02;
 const starSize:Number = 40;
@@ -151,6 +152,7 @@ internal class Game extends Sprite {
   public var player:Player = new Player();
   public var scoreField:TextField = new TextField();
   public var score:int = 0;
+  public var loveMeter:Shape = new Shape();
   public var star:Sunflare = new Sunflare();
   public var endGame:Function;
 
@@ -174,6 +176,25 @@ internal class Game extends Sprite {
     scoreField.y = 10;
     addChild(scoreField);
 
+    loveMeter = new Shape();
+    loveMeter.graphics.beginFill(0xff0000, 0.7);
+    loveMeter.graphics.drawRect(0, 0, stage.stageWidth * 0.3, 30);
+    loveMeter.graphics.endFill();
+    loveMeter.x = 10;
+    loveMeter.y = 10;
+    addChild(loveMeter);
+
+    var frame:Shape = new Shape();
+    frame.graphics.lineStyle(3, 0xffffff);
+    frame.graphics.drawRect(10, 10, stage.stageWidth * 0.3, 30);
+    frame.graphics.lineStyle(1, 0xffffff);
+    for (var i:int = 1; i <= Asteroid.startSize; i++) {
+      var lx:Number = 10 + stage.stageWidth * 0.15 * i / Asteroid.startSize;
+      frame.graphics.moveTo(lx, 10);
+      frame.graphics.lineTo(lx, 40);
+    }
+    addChild(frame);
+
     addAsteroid();
 
     var m:Matrix = new Matrix();
@@ -193,6 +214,7 @@ internal class Game extends Sprite {
     tprev = tcur;
 
     player.update(dt);
+    loveMeter.scaleX = player.energy;
     star.update(dt);
 
     var changed:Boolean = false;
@@ -406,12 +428,20 @@ internal class Player extends Sprite {
   public var turnRight:Boolean = false;
 
   public function Player():void {
-    const c30:Number = Math.cos(Math.PI / 6);
-    graphics.beginFill(0xffffff);
-    graphics.moveTo(-size * c30, size * 0.5);
-    graphics.lineTo(size * c30, size * 0.5);
-    graphics.lineTo(0, -size);
-    graphics.drawRect(-size * 0.5, size * 0.6, size, size * 0.3);
+    graphics.lineStyle(1, 0x332211);
+    graphics.beginFill(0xcc9933);
+    graphics.drawEllipse(-size, -size, size * 2, size * 1.5);
+    graphics.endFill();
+    graphics.beginFill(0xcc9933);
+    graphics.drawRoundRect(-size * 0.7, size * 0.1, size * 0.4, size * 0.8, size * 0.1);
+    graphics.drawRoundRect(size * 0.3, size * 0.1, size * 0.4, size * 0.8, size * 0.1);
+    graphics.endFill();
+    graphics.beginFill(0x3399cc);
+    graphics.moveTo(-size * 0.8, -size * 0.2);
+    graphics.lineTo(-size * 0.8, -size * 0.5);
+    graphics.curveTo(0, -size * 1, size * 0.8, -size * 0.5);
+    graphics.lineTo(size * 0.8, -size * 0.2);
+    graphics.curveTo(0, -size * 0.4, -size * 0.8, -size * 0.2);
     graphics.endFill();
   }
 
@@ -424,6 +454,7 @@ internal class Player extends Sprite {
     rotation += ((turnRight ? 1 : 0) - (turnLeft ? 1 : 0)) * turnSpeed * dt;
 
     var reloading:Boolean = vecLen(x - stage.stageWidth / 2, y - stage.stageHeight / 2) < starSize;
+    filters = reloading ? [new GlowFilter(0xffffff, 1, size, size)] : undefined;
 
     if (throttle || reloading) {
       vx += Math.sin(rotation * Math.PI / 180) * acceleration * dt;
