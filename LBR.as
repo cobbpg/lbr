@@ -65,6 +65,7 @@ package {
 
 import flash.display.*;
 import flash.events.*;
+import flash.filters.*;
 import flash.geom.*;
 import flash.text.*;
 import flash.utils.*;
@@ -148,6 +149,8 @@ internal class Game extends Sprite {
   public var paused:Boolean = false;
   public var asteroids:Array = new Array();
   public var player:Player = new Player();
+  public var scoreField:TextField = new TextField();
+  public var score:int = 0;
   public var star:Sunflare = new Sunflare();
   public var endGame:Function;
 
@@ -159,8 +162,18 @@ internal class Game extends Sprite {
     addChild(star);
     star.x = stage.stageWidth / 2;
     star.y = stage.stageHeight / 2;
+
     addChild(player);
     player.init();
+
+    scoreField.embedFonts = true;
+    scoreField.width = stage.stageWidth;
+    scoreField.autoSize = TextFieldAutoSize.RIGHT;
+    scoreField.defaultTextFormat = new TextFormat("Zekton", 30, 0xffffff);
+    scoreField.text = "0 ";
+    scoreField.y = 10;
+    addChild(scoreField);
+
     addAsteroid();
 
     var m:Matrix = new Matrix();
@@ -195,6 +208,9 @@ internal class Game extends Sprite {
 	if (a.lethal) {
 	  endGame();
 	  return;
+	} else {
+	  score += a.size * a.size * 100;
+	  scoreField.text = score + " ";
 	}
 
 	changed = true;
@@ -238,7 +254,7 @@ internal class Game extends Sprite {
   public function addAsteroid(size:int = -1, px:Number = -1, py:Number = -1):void {
     var a:Asteroid = new Asteroid(size == -1 ? Asteroid.startSize : size);
 
-    addChild(a);
+    addChildAt(a, 2);
     a.init();
     if ((px >= 0) && (py >= 0)) {
       a.x = px;
@@ -332,19 +348,41 @@ internal class Asteroid extends Sprite {
 
     x += vx * dt;
     y += vy * dt;
+    rotation += (startSize + 1 - size) * 80 * dt;
+
+    /*
+
+    // Fancy but CPU intensive lighting...
+
+    var bf:BevelFilter = new BevelFilter();
+    bf.angle = Math.atan2(y - stage.stageHeight / 2, x - stage.stageWidth / 2) * 180 / Math.PI;
+    bf.strength = Math.min(1, starSize * 2 / d);
+    filters = [bf];
+
+    */
 
     var l:Boolean = pnrg * startSize * 2 < size;
     if (l != lethal) {
       lethal = l;
-      transform.colorTransform = lethal ? new ColorTransform(1, 0, 0) : new ColorTransform();
+      transform.colorTransform = lethal ? new ColorTransform(2, 0.3, 0.3) : new ColorTransform();
+      filters = lethal ? [new GlowFilter()] : undefined;
     }
   }
 
   public function redraw():void {
     graphics.clear();
-    graphics.beginFill(0x999999);
-    graphics.lineStyle(1, 0x555555);
-    graphics.drawCircle(0, 0, size * unit);
+    graphics.beginFill(0x443322);
+    graphics.lineStyle(2, 0x221109);
+
+    var n:int = Math.random() * 6 + 8;
+    graphics.moveTo(0, (Math.random() * 0.3 + 0.8) * size * unit);
+    for (var i:int = 1; i < n; i++) {
+      var lc:Number = (Math.random() * 0.6 + 0.5) * size * unit;
+      var la:Number = (Math.random() * 0.3 + 0.8) * size * unit;
+      graphics.curveTo(Math.sin((i - 0.5) * 2 * Math.PI / n) * lc, Math.cos((i - 0.5) * 2 * Math.PI / n) * lc,
+		       Math.sin(i * 2 * Math.PI / n) * la, Math.cos(i * 2 * Math.PI / n) * la);
+    }
+
     graphics.endFill();
   }
 
