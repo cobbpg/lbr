@@ -8,3 +8,5 @@ Controls
 
  * W or ↑ - thrust
  * A/D or ←/→ - turn
+ * P - pause
+ * Esc - return to menu
